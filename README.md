@@ -46,3 +46,14 @@ PATCH
 
 MIT
 
+
+## Tests
+
+Run a small gauntlet against `bin/apply_patch`:
+
+```bash
+node tests/run-tests.mjs
+
+# or point at a different apply_patch implementation
+APPLY_PATCH=/path/to/bin/apply_patch node tests/run-tests.mjs
+```
