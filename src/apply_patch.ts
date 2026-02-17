@@ -209,6 +209,10 @@ function parseOps(patchText: string): Op[] {
           i++;
         }
 
+        // Trim trailing empty lines (artifacts of stdin's final newline)
+        while (minus.length && minus[minus.length - 1] === '') minus.pop();
+        while (plus.length && plus[plus.length - 1] === '') plus.pop();
+
         hunks.push({ minus, plus, anchor });
       }
       ops.push({ op: 'update', filePath, hunks });
