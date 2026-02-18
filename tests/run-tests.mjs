@@ -4,6 +4,28 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+// ── Block comment skipping in at:top ───────────────────────────────────
+
+function testAnchorTopSkipsBlockComment() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.js'), '/*\n * License header\n * Copyright 2025\n */\n\nconst x = 1;\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.js',
+    '@@ at:top @@',
+    '+import y from "y";',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, `block comment skip exit (stderr=${JSON.stringify(r.err)})`);
+  const content = read(path.join(cwd, 'a.js'));
+  const lines = content.split('\n');
+  // Should NOT be inserted inside the block comment
+  const insertIdx = lines.indexOf('import y from "y";');
+  const commentEndIdx = lines.indexOf(' */');
+  assert(insertIdx > commentEndIdx, `inserted after block comment (insert=${insertIdx}, commentEnd=${commentEndIdx})`);
+}
 
 const APPLY = process.env.APPLY_PATCH || path.resolve('bin/apply_patch');
 
@@ -662,6 +684,7 @@ const tests = [
   testAnchorAfter,
   testAnchorTopBasic,
   testAnchorTopSkipsShebangAndImports,
+  testAnchorTopSkipsBlockComment,
   testAddFileNestedDir,
   testMultiOpPatch,
   testCodeFenceStripping,
