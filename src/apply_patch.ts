@@ -16,7 +16,21 @@ type Op =
   | { op: 'delete'; filePath: string }
   | { op: 'rename'; from: string; to: string };
 
+interface ApplyResult {
+  success: boolean;
+  applied: string[];
+  failed: string[];
+  errors: Record<string, string>;
+}
+
+let _jsonMode = false;
+
 function die(msg: string, code = 1): never {
+  if (_jsonMode) {
+    const result: ApplyResult = { success: false, applied: [], failed: [], errors: { _global: msg } };
+    process.stdout.write(JSON.stringify(result) + '\n');
+    process.exit(code);
+  }
   process.stderr.write(msg + '\n');
   process.exit(code);
   throw new Error(msg);
@@ -152,7 +166,7 @@ function pruneOldBackups(filePath: string, maxBackups: number, verbose: boolean)
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   const pattern = `${base}.bak.`;
-  
+
   try {
     const entries = fs.readdirSync(dir);
     const backups = entries
@@ -316,18 +330,20 @@ function parseOps(patchText: string): Op[] {
   return ops;
 }
 
-function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: boolean, maxBackups: number): boolean {
+function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: boolean, maxBackups: number): { ok: boolean; error?: string } {
   if (!fs.existsSync(filePath)) {
-    process.stderr.write(`apply_patch: update failed, file not found: ${filePath}\n`);
-    return false;
+    const msg = `apply_patch: update failed, file not found: ${filePath}`;
+    process.stderr.write(msg + '\n');
+    return { ok: false, error: msg };
   }
 
   let original: string;
   try {
     original = fs.readFileSync(filePath, 'utf8');
   } catch (err: any) {
-    process.stderr.write(`apply_patch: failed to read ${filePath}: ${err.message}\n`);
-    return false;
+    const msg = `apply_patch: failed to read ${filePath}: ${err.message}`;
+    process.stderr.write(msg + '\n');
+    return { ok: false, error: msg };
   }
 
   let lines = original.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -365,18 +381,19 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
       continue;
     }
 
-    process.stderr.write(`apply_patch: hunk not found and no valid anchor in ${filePath}; aborting\n`);
-    return false;
+    const msg = `apply_patch: hunk not found and no valid anchor in ${filePath}; aborting`;
+    process.stderr.write(msg + '\n');
+    return { ok: false, error: msg };
   }
 
   if (!changed) {
     dbg(verbose, 'no changes needed for', filePath);
-    return true;
+    return { ok: true };
   }
 
   if (dryRun) {
     dbg(verbose, '[dry-run] would write', filePath);
-    return true;
+    return { ok: true };
   }
 
   backup(filePath, verbose, maxBackups);
@@ -384,10 +401,11 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
   try {
     fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
   } catch (err: any) {
-    process.stderr.write(`apply_patch: failed to write ${filePath}: ${err.message}\n`);
-    return false;
+    const msg = `apply_patch: failed to write ${filePath}: ${err.message}`;
+    process.stderr.write(msg + '\n');
+    return { ok: false, error: msg };
   }
-  return true;
+  return { ok: true };
 }
 
 async function main() {
@@ -397,6 +415,7 @@ async function main() {
   let allowDelete = false;
   let allowRename = false;
   let maxBackups = 0;
+  let jsonOutput = false;
 
   for (const a of args) {
     if (a === '--dry-run') dryRun = true;
@@ -408,36 +427,55 @@ async function main() {
       if (isNaN(val) || val < 0) die('apply_patch: --max-backups requires non-negative integer', 2);
       maxBackups = val;
     }
+    else if (a === '--json') jsonOutput = true;
     else die(`apply_patch: unknown arg: ${a}`, 2);
   }
+
+  _jsonMode = jsonOutput;
 
   const patchText = await readStdin();
   const ops = parseOps(patchText);
   if (!ops.length) die('apply_patch: no operations recognized');
 
-  let ok = true;
+  const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
+
   for (const op of ops) {
+    const filePath = op.op === 'rename' ? op.from : op.filePath;
     if (op.op === 'add') {
       if (dryRun) dbg(verbose, '[dry-run] add', op.filePath, `(${op.content.length} bytes)`);
       else {
         ensureDir(op.filePath);
         backup(op.filePath, verbose, maxBackups);
-      cleanupBackups(op.filePath, maxBackups, verbose);
+        cleanupBackups(op.filePath, maxBackups, verbose);
         const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
         try {
           fs.writeFileSync(op.filePath, c, 'utf8');
         } catch (err: any) {
-          process.stderr.write(`apply_patch: failed to write ${op.filePath}: ${err.message}\n`);
-          ok = false;
+          const msg = `apply_patch: failed to write ${op.filePath}: ${err.message}`;
+          process.stderr.write(msg + '\n');
+          result.failed.push(op.filePath);
+          result.errors[op.filePath] = msg;
+          result.success = false;
           continue;
         }
       }
+      result.applied.push(op.filePath);
     } else if (op.op === 'update') {
-      ok = applyUpdate(op.filePath, op.hunks, dryRun, verbose, maxBackups) && ok;
+      const r = applyUpdate(op.filePath, op.hunks, dryRun, verbose, maxBackups);
+      if (r.ok) {
+        result.applied.push(op.filePath);
+      } else {
+        result.failed.push(op.filePath);
+        result.errors[op.filePath] = r.error!;
+        result.success = false;
+      }
     } else if (op.op === 'delete') {
       if (!allowDelete) {
-        process.stderr.write('apply_patch: Delete File requires --allow-delete\n');
-        ok = false;
+        const msg = 'apply_patch: Delete File requires --allow-delete';
+        process.stderr.write(msg + '\n');
+        result.failed.push(op.filePath);
+        result.errors[op.filePath] = msg;
+        result.success = false;
         continue;
       }
       if (fs.existsSync(op.filePath)) {
@@ -446,37 +484,57 @@ async function main() {
           try {
             fs.rmSync(op.filePath);
           } catch (err: any) {
-            process.stderr.write(`apply_patch: failed to delete ${op.filePath}: ${err.message}\n`);
-            ok = false;
+            const msg = `apply_patch: failed to delete ${op.filePath}: ${err.message}`;
+            process.stderr.write(msg + '\n');
+            result.failed.push(op.filePath);
+            result.errors[op.filePath] = msg;
+            result.success = false;
+            continue;
           }
         }
       }
+      result.applied.push(op.filePath);
     } else if (op.op === 'rename') {
       if (!allowRename) {
-        process.stderr.write('apply_patch: Rename File requires --allow-rename\n');
-        ok = false;
+        const msg = 'apply_patch: Rename File requires --allow-rename';
+        process.stderr.write(msg + '\n');
+        result.failed.push(filePath);
+        result.errors[filePath] = msg;
+        result.success = false;
         continue;
       }
       if (!fs.existsSync(op.from)) {
-        process.stderr.write(`apply_patch: rename failed: ${op.from} not found\n`);
-        ok = false;
+        const msg = `apply_patch: rename failed: ${op.from} not found`;
+        process.stderr.write(msg + '\n');
+        result.failed.push(filePath);
+        result.errors[filePath] = msg;
+        result.success = false;
       } else {
         ensureDir(op.to);
         if (!dryRun) {
           if (fs.existsSync(op.to)) backup(op.to, verbose, maxBackups);
-        cleanupBackups(op.to, maxBackups, verbose);
+          cleanupBackups(op.to, maxBackups, verbose);
           try {
             fs.renameSync(op.from, op.to);
           } catch (err: any) {
-            process.stderr.write(`apply_patch: failed to rename ${op.from} -> ${op.to}: ${err.message}\n`);
-            ok = false;
+            const msg = `apply_patch: failed to rename ${op.from} -> ${op.to}: ${err.message}`;
+            process.stderr.write(msg + '\n');
+            result.failed.push(filePath);
+            result.errors[filePath] = msg;
+            result.success = false;
+            continue;
           }
         }
+        result.applied.push(filePath);
       }
     }
   }
 
-  process.exit(ok ? 0 : 1);
+  if (jsonOutput) {
+    process.stdout.write(JSON.stringify(result) + '\n');
+  }
+
+  process.exit(result.success ? 0 : 1);
 }
 
 main().catch((e) => {
