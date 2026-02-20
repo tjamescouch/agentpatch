@@ -133,7 +133,12 @@ function findAnchorIndex(lines: string[], anchor: Anchor): number {
 function ensureDir(filePath: string) {
   const dir = path.dirname(filePath);
   if (!dir || dir === '.') return;
-  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err: any) {
+    process.stderr.write(`apply_patch: failed to create directory ${dir}: ${err.message}\n`);
+    throw err;
+  }
 }
 
 function backup(filePath: string, verbose: boolean) {
@@ -141,7 +146,12 @@ function backup(filePath: string, verbose: boolean) {
   const ts = new Date().toISOString().replace(/[:.]/g, '').replace('T', '-').slice(0, 15);
   const bak = `${filePath}.bak.${ts}`;
   ensureDir(bak);
-  fs.copyFileSync(filePath, bak);
+  try {
+    fs.copyFileSync(filePath, bak);
+  } catch (err: any) {
+    process.stderr.write(`apply_patch: failed to backup ${filePath}: ${err.message}\n`);
+    throw err;
+  }
   dbg(verbose, 'backup', bak);
 }
 
@@ -266,7 +276,14 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
     return false;
   }
 
-  const original = fs.readFileSync(filePath, 'utf8');
+  let original: string;
+  try {
+    original = fs.readFileSync(filePath, 'utf8');
+  } catch (err: any) {
+    process.stderr.write(`apply_patch: failed to read ${filePath}: ${err.message}\n`);
+    return false;
+  }
+
   let lines = original.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   if (lines.length && lines[lines.length - 1] === '') lines = lines.slice(0, -1);
 
@@ -317,7 +334,12 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
   }
 
   backup(filePath, verbose);
-  fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
+  try {
+    fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
+  } catch (err: any) {
+    process.stderr.write(`apply_patch: failed to write ${filePath}: ${err.message}\n`);
+    return false;
+  }
   return true;
 }
 
@@ -348,7 +370,13 @@ async function main() {
         ensureDir(op.filePath);
         backup(op.filePath, verbose);
         const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
-        fs.writeFileSync(op.filePath, c, 'utf8');
+        try {
+          fs.writeFileSync(op.filePath, c, 'utf8');
+        } catch (err: any) {
+          process.stderr.write(`apply_patch: failed to write ${op.filePath}: ${err.message}\n`);
+          ok = false;
+          continue;
+        }
       }
     } else if (op.op === 'update') {
       ok = applyUpdate(op.filePath, op.hunks, dryRun, verbose) && ok;
@@ -361,7 +389,12 @@ async function main() {
       if (fs.existsSync(op.filePath)) {
         if (!dryRun) {
           backup(op.filePath, verbose);
-          fs.rmSync(op.filePath);
+          try {
+            fs.rmSync(op.filePath);
+          } catch (err: any) {
+            process.stderr.write(`apply_patch: failed to delete ${op.filePath}: ${err.message}\n`);
+            ok = false;
+          }
         }
       }
     } else if (op.op === 'rename') {
@@ -377,7 +410,12 @@ async function main() {
         ensureDir(op.to);
         if (!dryRun) {
           if (fs.existsSync(op.to)) backup(op.to, verbose);
-          fs.renameSync(op.from, op.to);
+          try {
+            fs.renameSync(op.from, op.to);
+          } catch (err: any) {
+            process.stderr.write(`apply_patch: failed to rename ${op.from} -> ${op.to}: ${err.message}\n`);
+            ok = false;
+          }
         }
       }
     }
