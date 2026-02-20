@@ -141,9 +141,41 @@ function ensureDir(filePath: string) {
   }
 }
 
-function backup(filePath: string, verbose: boolean) {
+function pruneOldBackups(filePath: string, maxBackups: number, verbose: boolean) {
+  if (maxBackups < 1) return;
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const pattern = `${base}.bak.`;
+  
+  try {
+    const entries = fs.readdirSync(dir);
+    const backups = entries
+      .filter(name => name.startsWith(pattern))
+      .map(name => {
+        const fullPath = path.join(dir, name);
+        const stat = fs.statSync(fullPath);
+        return { name, path: fullPath, mtime: stat.mtime.getTime() };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+
+    if (backups.length > maxBackups) {
+      const toDelete = backups.slice(maxBackups);
+      for (const old of toDelete) {
+        try {
+          fs.rmSync(old.path);
+          dbg(verbose, 'pruned old backup', old.path);
+        } catch (err: any) {
+          dbg(verbose, `failed to prune ${old.path}: ${err.message}`);
+        }
+      }
+    }
+  } catch (err: any) {
+    dbg(verbose, `failed to prune backups for ${filePath}: ${err.message}`);
+  }
+}
+function backup(filePath: string, verbose: boolean, maxBackups = 0) {
   if (!fs.existsSync(filePath)) return;
-  const ts = new Date().toISOString().replace(/[:.]/g, '').replace('T', '-').slice(0, 15);
+  const ts = new Date().toISOString().replace(/[:.]/g, '').replace('T', '-').slice(0, 18);
   const bak = `${filePath}.bak.${ts}`;
   ensureDir(bak);
   try {
@@ -153,8 +185,16 @@ function backup(filePath: string, verbose: boolean) {
     throw err;
   }
   dbg(verbose, 'backup', bak);
+  if (maxBackups > 0) {
+    pruneOldBackups(filePath, maxBackups, verbose);
+  }
 }
 
+function cleanupBackups(filePath: string, maxBackups: number, verbose: boolean) {
+  if (maxBackups > 0) {
+    pruneOldBackups(filePath, maxBackups, verbose);
+  }
+}
 function parseAnchor(header: string): Anchor {
   const h = header.trim();
   if (h.includes('at:top')) return { type: 'top' };
@@ -270,7 +310,7 @@ function parseOps(patchText: string): Op[] {
   return ops;
 }
 
-function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: boolean): boolean {
+function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: boolean, maxBackups: number): boolean {
   if (!fs.existsSync(filePath)) {
     process.stderr.write(`apply_patch: update failed, file not found: ${filePath}\n`);
     return false;
@@ -333,7 +373,8 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
     return true;
   }
 
-  backup(filePath, verbose);
+  backup(filePath, verbose, maxBackups);
+  cleanupBackups(filePath, maxBackups, verbose);
   try {
     fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
   } catch (err: any) {
@@ -349,12 +390,18 @@ async function main() {
   let verbose = false;
   let allowDelete = false;
   let allowRename = false;
+  let maxBackups = 0;
 
   for (const a of args) {
     if (a === '--dry-run') dryRun = true;
     else if (a === '--verbose' || a === '-v') verbose = true;
     else if (a === '--allow-delete') allowDelete = true;
     else if (a === '--allow-rename') allowRename = true;
+    else if (a.startsWith('--max-backups=')) {
+      const val = parseInt(a.slice('--max-backups='.length), 10);
+      if (isNaN(val) || val < 0) die('apply_patch: --max-backups requires non-negative integer', 2);
+      maxBackups = val;
+    }
     else die(`apply_patch: unknown arg: ${a}`, 2);
   }
 
@@ -368,7 +415,8 @@ async function main() {
       if (dryRun) dbg(verbose, '[dry-run] add', op.filePath, `(${op.content.length} bytes)`);
       else {
         ensureDir(op.filePath);
-        backup(op.filePath, verbose);
+        backup(op.filePath, verbose, maxBackups);
+      cleanupBackups(op.filePath, maxBackups, verbose);
         const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
         try {
           fs.writeFileSync(op.filePath, c, 'utf8');
@@ -379,7 +427,7 @@ async function main() {
         }
       }
     } else if (op.op === 'update') {
-      ok = applyUpdate(op.filePath, op.hunks, dryRun, verbose) && ok;
+      ok = applyUpdate(op.filePath, op.hunks, dryRun, verbose, maxBackups) && ok;
     } else if (op.op === 'delete') {
       if (!allowDelete) {
         process.stderr.write('apply_patch: Delete File requires --allow-delete\n');
@@ -388,7 +436,7 @@ async function main() {
       }
       if (fs.existsSync(op.filePath)) {
         if (!dryRun) {
-          backup(op.filePath, verbose);
+          backup(op.filePath, verbose, maxBackups);
           try {
             fs.rmSync(op.filePath);
           } catch (err: any) {
@@ -409,7 +457,8 @@ async function main() {
       } else {
         ensureDir(op.to);
         if (!dryRun) {
-          if (fs.existsSync(op.to)) backup(op.to, verbose);
+          if (fs.existsSync(op.to)) backup(op.to, verbose, maxBackups);
+        cleanupBackups(op.to, maxBackups, verbose);
           try {
             fs.renameSync(op.from, op.to);
           } catch (err: any) {
