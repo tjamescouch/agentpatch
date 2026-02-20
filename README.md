@@ -33,6 +33,9 @@ If the `+` block already exists (exact or whitespace-insensitive match), the hun
 
 ### Usage
 
+bin/apply_patch --verbose <<'PATCH'
+bin/apply_patch --verbose --max-backups=5 <<'PATCH'
+
 ```bash
 bin/apply_patch --verbose <<'PATCH'
 *** Begin Patch
@@ -42,6 +45,15 @@ bin/apply_patch --verbose <<'PATCH'
 PATCH
 ```
 
+### Options
+
+- `--verbose` / `-v` — Enable debug output
+- `--dry-run` — Preview changes without writing files
+- `--allow-delete` — Allow `*** Delete File` operations
+- `--allow-rename` — Allow `*** Rename File` operations
+- `--max-backups=N` — Keep at most N timestamped backups per file (default: unlimited)
+
+Backups are created as `<file>.bak.<timestamp>` before any modification. With `--max-backups`, old backups are pruned after each operation to maintain the limit.
 ## License
 
 MIT
