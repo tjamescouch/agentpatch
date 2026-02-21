@@ -93,13 +93,19 @@ function insertTopStrategy(lines: string[]): number {
   let idx = 0;
   if (lines[0]?.startsWith('#!')) idx = 1;
 
-  // skip blank + comment header
+  // skip blank lines, single-line comments, and block comments
   while (
     idx < lines.length &&
     (lines[idx].trim() === '' ||
       lines[idx].trimStart().startsWith('//') ||
       lines[idx].trimStart().startsWith('/*'))
   ) {
+    // If this line opens a block comment, skip through to the closing */
+    if (lines[idx].trimStart().startsWith('/*')) {
+      while (idx < lines.length && !lines[idx].includes('*/')) {
+        idx++;
+      }
+    }
     idx++;
   }
 
