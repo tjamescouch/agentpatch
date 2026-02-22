@@ -210,6 +210,11 @@ function backup(filePath: string, verbose: boolean, maxBackups = 0) {
   }
 }
 
+function cleanupBackups(filePath: string, maxBackups: number, verbose: boolean) {
+  if (maxBackups > 0) {
+    pruneOldBackups(filePath, maxBackups, verbose);
+  }
+}
 function parseAnchor(header: string): Anchor {
   const h = header.trim();
   if (h.includes('at:top')) return { type: 'top' };
@@ -392,6 +397,7 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
   }
 
   backup(filePath, verbose, maxBackups);
+  cleanupBackups(filePath, maxBackups, verbose);
   try {
     fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
   } catch (err: any) {
@@ -440,6 +446,7 @@ async function main() {
       else {
         ensureDir(op.filePath);
         backup(op.filePath, verbose, maxBackups);
+        cleanupBackups(op.filePath, maxBackups, verbose);
         const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
         try {
           fs.writeFileSync(op.filePath, c, 'utf8');
@@ -506,6 +513,7 @@ async function main() {
         ensureDir(op.to);
         if (!dryRun) {
           if (fs.existsSync(op.to)) backup(op.to, verbose, maxBackups);
+          cleanupBackups(op.to, maxBackups, verbose);
           try {
             fs.renameSync(op.from, op.to);
           } catch (err: any) {
