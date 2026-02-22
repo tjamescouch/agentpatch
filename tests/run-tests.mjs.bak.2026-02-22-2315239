@@ -644,6 +644,9 @@ function testAnchorRegexSpecialChars() {
   assert(lines[1] === '  // added comment', 'regex anchor inserted after match');
 }
 
+// ── Windows-style line endings in source ────────────────────────────────
+
+function testWindowsLineEndings() {
 // ── at:top skips hash-style comments (Python/Shell/Ruby) ────────────────
 
 function testAnchorTopSkipsHashComments() {
@@ -709,7 +712,6 @@ const tests = [
   testAnchorTopBasic,
   testAnchorTopSkipsShebangAndImports,
   testAnchorTopSkipsBlockComment,
-  testAnchorTopSkipsHashComments,
   testAddFileNestedDir,
   testMultiOpPatch,
   testCodeFenceStripping,

@@ -644,31 +644,7 @@ function testAnchorRegexSpecialChars() {
   assert(lines[1] === '  // added comment', 'regex anchor inserted after match');
 }
 
-// ── at:top skips hash-style comments (Python/Shell/Ruby) ────────────────
-
-function testAnchorTopSkipsHashComments() {
-  const cwd = mkTmp();
-  // Python-style module with leading hash comments and a shebang
-  write(path.join(cwd, 'script.py'), '#!/usr/bin/env python3\n# Copyright 2025\n# License: MIT\n\nimport os\n\ndef main():\n    pass\n');
-  const patch = [
-    '*** Begin Patch',
-    '*** Update File: script.py',
-    '@@ at:top @@',
-    '+import sys',
-    '*** End Patch',
-    ''
-  ].join('\n');
-  const r = apply(patch, cwd);
-  assert(r.code === 0, `hash comment skip exit (stderr=${JSON.stringify(r.err)})`);
-  const content = read(path.join(cwd, 'script.py'));
-  const lines = content.split('\n');
-  const insertIdx = lines.indexOf('import sys');
-  const shebangIdx = lines.indexOf('#!/usr/bin/env python3');
-  const lastCommentIdx = lines.indexOf('# License: MIT');
-  // Should be inserted after comments, not inside them
-  assert(insertIdx > shebangIdx, `inserted after shebang (insert=${insertIdx}, shebang=${shebangIdx})`);
-  assert(insertIdx > lastCommentIdx, `inserted after hash comments (insert=${insertIdx}, lastComment=${lastCommentIdx})`);
-}
+// ── Windows-style line endings in source ────────────────────────────────
 
 function testWindowsLineEndings() {
   const cwd = mkTmp();
@@ -709,7 +685,6 @@ const tests = [
   testAnchorTopBasic,
   testAnchorTopSkipsShebangAndImports,
   testAnchorTopSkipsBlockComment,
-  testAnchorTopSkipsHashComments,
   testAddFileNestedDir,
   testMultiOpPatch,
   testCodeFenceStripping,
