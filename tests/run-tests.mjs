@@ -667,6 +667,29 @@ function testWindowsLineEndings() {
 
 // ── All tests ───────────────────────────────────────────────────────────
 
+// ── Add file to nested directory creates dirs ────────────────────────────
+
+function testAddFileCreatesNestedDirs() {
+  const cwd = mkTmp();
+  const patch = '*** Begin Patch\n*** Add File: a/b/c/deep.txt\n+nested\n*** End Patch\n';
+  const r = apply(patch, cwd);
+  assert(r.code === 0, `nested add exit code (stderr=${JSON.stringify(r.err)})`);
+  assert(read(path.join(cwd, 'a/b/c/deep.txt')) === 'nested\n', 'nested file content');
+}
+
+// ── Rename file basic ────────────────────────────────────────────────────
+
+function testRenameFileBasic() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'old.txt'), 'content\n');
+  const patch = '*** Begin Patch\n*** Rename File: old.txt -> new.txt\n*** End Patch\n';
+  const r = apply(patch, cwd, ['--allow-rename']);
+  assert(r.code === 0, `rename exit code (stderr=${JSON.stringify(r.err)})`);
+  assert(!fs.existsSync(path.join(cwd, 'old.txt')), 'old file gone');
+  assert(read(path.join(cwd, 'new.txt')) === 'content\n', 'new file has content');
+}
+
+
 const tests = [
   // Original 8
   testAddFile,
@@ -708,6 +731,8 @@ const tests = [
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
+  testAddFileCreatesNestedDirs,
+  testRenameFileBasic,
 ];
 
 let passed = 0;
