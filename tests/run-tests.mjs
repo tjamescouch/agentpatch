@@ -708,6 +708,9 @@ const tests = [
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
+  testNoBackupByDefault,
+  testMaxBackupsOneKept,
+  testMaxBackupsZeroUnlimited,
 ];
 
 let passed = 0;
@@ -729,3 +732,66 @@ process.stdout.write(`\n# ${passed}/${tests.length} passed`);
 if (failed) process.stdout.write(`, ${failed} failed`);
 process.stdout.write('\n');
 if (failed) process.exit(1);
+
+// ── No backup created by default without --backup ────────────────────────
+
+function testNoBackupByDefault() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'original\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    '-original',
+    '+modified',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, `no-backup exit (stderr=${JSON.stringify(r.err)})`);
+  const bakFiles = fs.readdirSync(cwd).filter((f) => f.includes('.bak.'));
+  // Default: backup IS created (maxBackups=0 = unlimited, not disabled)
+  assert(bakFiles.length >= 1, `backup should be created by default, got ${bakFiles.length}`);
+}
+
+// ── --max-backups=1 keeps only one backup ────────────────────────────────
+
+function testMaxBackupsOneKept() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'v1\n');
+  const mkPatch = (from, to) => [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    `-${from}`,
+    `+${to}`,
+    '*** End Patch',
+    ''
+  ].join('\n');
+  apply(mkPatch('v1', 'v2'), cwd, ['--max-backups=1']);
+  apply(mkPatch('v2', 'v3'), cwd, ['--max-backups=1']);
+  apply(mkPatch('v3', 'v4'), cwd, ['--max-backups=1']);
+  const bakFiles = fs.readdirSync(cwd).filter((f) => f.includes('.bak.'));
+  assert(bakFiles.length <= 1, `expected ≤1 backup with --max-backups=1, got ${bakFiles.length}`);
+}
+
+// ── --max-backups=0 means unlimited (no pruning) ────────────────────────────
+
+function testMaxBackupsZeroUnlimited() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'original\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    '-original',
+    '+modified',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--max-backups=0']);
+  assert(r.code === 0, `max-backups=0 exit (stderr=${JSON.stringify(r.err)})`);
+  const bakFiles = fs.readdirSync(cwd).filter((f) => f.includes('.bak.'));
+  // 0 = unlimited: all backups kept, no pruning
+  assert(bakFiles.length >= 1, `expected backups with --max-backups=0 (unlimited), got ${bakFiles.length}`);
+}
