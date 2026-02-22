@@ -4,6 +4,22 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+// ── Missing Begin Patch marker fails ────────────────────────────────────
+
+function testMissingBeginPatchFails() {
+  const cwd = mkTmp();
+  const r = apply('*** Update File: a.txt\n@@ @@\n-x\n+y\n*** End Patch\n', cwd);
+  assert(r.code !== 0, 'missing Begin Patch should fail');
+}
+
+
+// ── Update nonexistent file fails ───────────────────────────────────────
+
+function testUpdateNonexistentFileFails() {
+  const cwd = mkTmp();
+  const r = apply('*** Begin Patch\n*** Update File: ghost.txt\n@@ @@\n-x\n+y\n*** End Patch\n', cwd);
+  assert(r.code !== 0, 'update nonexistent file should fail');
+}
 // ── Block comment skipping in at:top ───────────────────────────────────
 
 function testAnchorTopSkipsBlockComment() {
@@ -705,6 +721,8 @@ const tests = [
   testAddFileMultiLine,
   testUnknownArgFails,
   testEmptyPatchFails,
+  testMissingBeginPatchFails,
+  testUpdateNonexistentFileFails,
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
