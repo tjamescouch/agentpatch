@@ -708,6 +708,9 @@ const tests = [
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
+  testPartialHunkFailure,
+  testUpdateEmptyFile,
+  testDeleteWithoutFlagMultiFile,
 ];
 
 let passed = 0;
@@ -729,3 +732,61 @@ process.stdout.write(`\n# ${passed}/${tests.length} passed`);
 if (failed) process.stdout.write(`, ${failed} failed`);
 process.stdout.write('\n');
 if (failed) process.exit(1);
+
+// ── Multi-hunk: second hunk fails, first already applied ────────────────
+
+function testPartialHunkFailure() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'f.txt'), 'aaa\nbbb\nccc\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: f.txt',
+    '@@ @@',
+    '-aaa',
+    '+AAA',
+    '@@ @@',
+    '-NOTHERE',
+    '+REPLACED',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code !== 0, 'partial hunk failure should exit non-zero');
+  assert(r.err.includes('hunk not found'), `expected hunk-not-found error, got: ${r.err}`);
+}
+
+// ── Update file that exists but is empty ────────────────────────────────
+
+function testUpdateEmptyFile() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'empty.txt'), '');
+  const patch = [
+    '*** Begin Patch',
+    '*** Add File: empty.txt',
+    '+first line',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, `add to empty file exit (stderr=${JSON.stringify(r.err)})`);
+  assert(read(path.join(cwd, 'empty.txt')) === 'first line\n', 'empty file now has content');
+}
+
+// ── Delete without flag on multiple files: all blocked ───────────────────
+
+function testDeleteWithoutFlagMultiFile() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'a\n');
+  write(path.join(cwd, 'b.txt'), 'b\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Delete File: a.txt',
+    '*** Delete File: b.txt',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code !== 0, 'delete without flag should fail');
+  assert(fs.existsSync(path.join(cwd, 'a.txt')), 'a.txt still exists');
+  assert(fs.existsSync(path.join(cwd, 'b.txt')), 'b.txt still exists');
+}
