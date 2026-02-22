@@ -218,6 +218,44 @@ function testJsonDryRun() {
 
 // ---- Run ----
 
+
+// ── JSON: multi-file patch (Update + Delete + Add) ──────────────────────
+
+function testJsonMultiFileUpdateDeleteAdd() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'upd.txt'), 'old\n');
+  write(path.join(cwd, 'del.txt'), 'bye\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: upd.txt',
+    '@@ @@',
+    '-old',
+    '+new',
+    '*** Delete File: del.txt',
+    '*** Add File: add.txt',
+    '+hello',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--json', '--allow-delete']);
+  assert(r.code === 0, 'exit 0');
+  const j = JSON.parse(r.out);
+  assert(j.success === true, 'success true');
+  assert(Array.isArray(j.applied) && j.applied.length === 3, 'three ops applied');
+}
+
+// ── JSON: verbose flag does not corrupt JSON stdout ───────────────────────
+
+function testJsonVerboseNoStdoutLeak() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'v.txt'), 'hello\n');
+  const patch = '*** Begin Patch\n*** Update File: v.txt\n@@ @@\n-hello\n+world\n*** End Patch\n';
+  const r = apply(patch, cwd, ['--json', '--verbose']);
+  assert(r.code === 0, 'exit 0');
+  const j = JSON.parse(r.out);
+  assert(j.success === true, 'json still valid with verbose');
+}
+
 const tests = [
   testJsonAddFileSuccess,
   testJsonUpdateSuccess,
@@ -231,6 +269,8 @@ const tests = [
   testJsonSchemaShape,
   testJsonNoOps,
   testJsonDryRun,
+  testJsonMultiFileUpdateDeleteAdd,
+  testJsonVerboseNoStdoutLeak,
 ];
 
 let passed = 0;
