@@ -23,14 +23,6 @@ interface ApplyResult {
   errors: Record<string, string>;
 }
 
-export interface ApplyOptions {
-  dryRun?: boolean;
-  verbose?: boolean;
-  allowDelete?: boolean;
-  allowRename?: boolean;
-  maxBackups?: number;
-}
-
 let _jsonMode = false;
 
 function die(msg: string, code = 1): never {
@@ -410,108 +402,6 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
   return { ok: true };
 }
 
-export function applyPatch(patchText: string, opts: ApplyOptions = {}): ApplyResult {
-  const {
-    dryRun = false,
-    verbose = false,
-    allowDelete = false,
-    allowRename = false,
-    maxBackups = 0,
-  } = opts;
-
-  const ops = parseOps(patchText);
-  const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
-  if (!ops.length) {
-    result.success = false;
-    result.errors['_global'] = 'apply_patch: no operations recognized';
-    return result;
-  }
-
-  for (const op of ops) {
-    const filePath = op.op === 'rename' ? op.from : op.filePath;
-    if (op.op === 'add') {
-      if (dryRun) dbg(verbose, '[dry-run] add', op.filePath);
-      else {
-        ensureDir(op.filePath);
-        backup(op.filePath, verbose, maxBackups);
-        const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
-        try {
-          fs.writeFileSync(op.filePath, c, 'utf8');
-        } catch (err: any) {
-          const msg = `apply_patch: failed to write ${op.filePath}: ${err.message}`;
-          result.failed.push(op.filePath);
-          result.errors[op.filePath] = msg;
-          result.success = false;
-          continue;
-        }
-      }
-      result.applied.push(op.filePath);
-    } else if (op.op === 'update') {
-      const r = applyUpdate(op.filePath, op.hunks, dryRun, verbose, maxBackups);
-      if (r.ok) {
-        result.applied.push(op.filePath);
-      } else {
-        result.failed.push(op.filePath);
-        result.errors[op.filePath] = r.error!;
-        result.success = false;
-      }
-    } else if (op.op === 'delete') {
-      if (!allowDelete) {
-        const msg = 'apply_patch: Delete File requires --allow-delete';
-        result.failed.push(op.filePath);
-        result.errors[op.filePath] = msg;
-        result.success = false;
-        continue;
-      }
-      if (fs.existsSync(op.filePath)) {
-        if (!dryRun) {
-          backup(op.filePath, verbose, maxBackups);
-          try {
-            fs.rmSync(op.filePath);
-          } catch (err: any) {
-            const msg = `apply_patch: failed to delete ${op.filePath}: ${err.message}`;
-            result.failed.push(op.filePath);
-            result.errors[op.filePath] = msg;
-            result.success = false;
-            continue;
-          }
-        }
-      }
-      result.applied.push(op.filePath);
-    } else if (op.op === 'rename') {
-      if (!allowRename) {
-        const msg = 'apply_patch: Rename File requires --allow-rename';
-        result.failed.push(filePath);
-        result.errors[filePath] = msg;
-        result.success = false;
-        continue;
-      }
-      if (!fs.existsSync(op.from)) {
-        const msg = `apply_patch: rename failed: ${op.from} not found`;
-        result.failed.push(filePath);
-        result.errors[filePath] = msg;
-        result.success = false;
-      } else {
-        ensureDir(op.to);
-        if (!dryRun) {
-          if (fs.existsSync(op.to)) backup(op.to, verbose, maxBackups);
-          try {
-            fs.renameSync(op.from, op.to);
-          } catch (err: any) {
-            const msg = `apply_patch: failed to rename ${op.from} -> ${op.to}: ${err.message}`;
-            result.failed.push(filePath);
-            result.errors[filePath] = msg;
-            result.success = false;
-            continue;
-          }
-        }
-        result.applied.push(filePath);
-      }
-    }
-  }
-  return result;
-}
-
 async function main() {
   const args = process.argv.slice(2);
   let dryRun = false;
@@ -538,8 +428,99 @@ async function main() {
   _jsonMode = jsonOutput;
 
   const patchText = await readStdin();
-  const result = applyPatch(patchText, { dryRun, verbose, allowDelete, allowRename, maxBackups });
-  if (!result.success && result.errors['_global']) die(result.errors['_global']);
+  const ops = parseOps(patchText);
+  if (!ops.length) die('apply_patch: no operations recognized');
+
+  const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
+
+  for (const op of ops) {
+    const filePath = op.op === 'rename' ? op.from : op.filePath;
+    if (op.op === 'add') {
+      if (dryRun) dbg(verbose, '[dry-run] add', op.filePath, `(${op.content.length} bytes)`);
+      else {
+        ensureDir(op.filePath);
+        backup(op.filePath, verbose, maxBackups);
+        const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
+        try {
+          fs.writeFileSync(op.filePath, c, 'utf8');
+        } catch (err: any) {
+          const msg = `apply_patch: failed to write ${op.filePath}: ${err.message}`;
+          process.stderr.write(msg + '\n');
+          result.failed.push(op.filePath);
+          result.errors[op.filePath] = msg;
+          result.success = false;
+          continue;
+        }
+      }
+      result.applied.push(op.filePath);
+    } else if (op.op === 'update') {
+      const r = applyUpdate(op.filePath, op.hunks, dryRun, verbose, maxBackups);
+      if (r.ok) {
+        result.applied.push(op.filePath);
+      } else {
+        result.failed.push(op.filePath);
+        result.errors[op.filePath] = r.error!;
+        result.success = false;
+      }
+    } else if (op.op === 'delete') {
+      if (!allowDelete) {
+        const msg = 'apply_patch: Delete File requires --allow-delete';
+        process.stderr.write(msg + '\n');
+        result.failed.push(op.filePath);
+        result.errors[op.filePath] = msg;
+        result.success = false;
+        continue;
+      }
+      if (fs.existsSync(op.filePath)) {
+        if (!dryRun) {
+          backup(op.filePath, verbose, maxBackups);
+          try {
+            fs.rmSync(op.filePath);
+          } catch (err: any) {
+            const msg = `apply_patch: failed to delete ${op.filePath}: ${err.message}`;
+            process.stderr.write(msg + '\n');
+            result.failed.push(op.filePath);
+            result.errors[op.filePath] = msg;
+            result.success = false;
+            continue;
+          }
+        }
+      }
+      result.applied.push(op.filePath);
+    } else if (op.op === 'rename') {
+      if (!allowRename) {
+        const msg = 'apply_patch: Rename File requires --allow-rename';
+        process.stderr.write(msg + '\n');
+        result.failed.push(filePath);
+        result.errors[filePath] = msg;
+        result.success = false;
+        continue;
+      }
+      if (!fs.existsSync(op.from)) {
+        const msg = `apply_patch: rename failed: ${op.from} not found`;
+        process.stderr.write(msg + '\n');
+        result.failed.push(filePath);
+        result.errors[filePath] = msg;
+        result.success = false;
+      } else {
+        ensureDir(op.to);
+        if (!dryRun) {
+          if (fs.existsSync(op.to)) backup(op.to, verbose, maxBackups);
+          try {
+            fs.renameSync(op.from, op.to);
+          } catch (err: any) {
+            const msg = `apply_patch: failed to rename ${op.from} -> ${op.to}: ${err.message}`;
+            process.stderr.write(msg + '\n');
+            result.failed.push(filePath);
+            result.errors[filePath] = msg;
+            result.success = false;
+            continue;
+          }
+        }
+        result.applied.push(filePath);
+      }
+    }
+  }
 
   if (jsonOutput) {
     process.stdout.write(JSON.stringify(result) + '\n');
