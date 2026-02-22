@@ -708,6 +708,9 @@ const tests = [
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
+  testMultiFileUpdateDeleteAdd,
+  testMultiFileThreeUpdates,
+  testMultiFileUpdateAndRename,
 ];
 
 let passed = 0;
@@ -729,3 +732,82 @@ process.stdout.write(`\n# ${passed}/${tests.length} passed`);
 if (failed) process.stdout.write(`, ${failed} failed`);
 process.stdout.write('\n');
 if (failed) process.exit(1);
+
+// ── Multi-file: Update + Delete + Add in one patch ──────────────────────
+
+function testMultiFileUpdateDeleteAdd() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'update.txt'), 'old content\n');
+  write(path.join(cwd, 'delete.txt'), 'to be deleted\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: update.txt',
+    '@@ @@',
+    '-old content',
+    '+new content',
+    '*** Delete File: delete.txt',
+    '*** Add File: add.txt',
+    '+fresh file',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--allow-delete']);
+  assert(r.code === 0, `multi update+delete+add exit (stderr=${JSON.stringify(r.err)})`);
+  assert(read(path.join(cwd, 'update.txt')) === 'new content\n', 'update.txt updated');
+  assert(!fs.existsSync(path.join(cwd, 'delete.txt')), 'delete.txt removed');
+  assert(read(path.join(cwd, 'add.txt')) === 'fresh file\n', 'add.txt created');
+}
+
+// ── Multi-file: Three Updates in one patch ───────────────────────────────
+
+function testMultiFileThreeUpdates() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'alpha\n');
+  write(path.join(cwd, 'b.txt'), 'beta\n');
+  write(path.join(cwd, 'c.txt'), 'gamma\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    '-alpha',
+    '+ALPHA',
+    '*** Update File: b.txt',
+    '@@ @@',
+    '-beta',
+    '+BETA',
+    '*** Update File: c.txt',
+    '@@ @@',
+    '-gamma',
+    '+GAMMA',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, `three updates exit (stderr=${JSON.stringify(r.err)})`);
+  assert(read(path.join(cwd, 'a.txt')) === 'ALPHA\n', 'a.txt updated');
+  assert(read(path.join(cwd, 'b.txt')) === 'BETA\n', 'b.txt updated');
+  assert(read(path.join(cwd, 'c.txt')) === 'GAMMA\n', 'c.txt updated');
+}
+
+// ── Multi-file: Update + Rename in one patch ─────────────────────────────
+
+function testMultiFileUpdateAndRename() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'original.txt'), 'content\n');
+  write(path.join(cwd, 'moveme.txt'), 'move this\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: original.txt',
+    '@@ @@',
+    '-content',
+    '+updated content',
+    '*** Rename File: moveme.txt -> moved.txt',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--allow-rename']);
+  assert(r.code === 0, `update+rename exit (stderr=${JSON.stringify(r.err)})`);
+  assert(read(path.join(cwd, 'original.txt')) === 'updated content\n', 'original.txt updated');
+  assert(!fs.existsSync(path.join(cwd, 'moveme.txt')), 'moveme.txt gone');
+  assert(read(path.join(cwd, 'moved.txt')) === 'move this\n', 'moved.txt exists');
+}
