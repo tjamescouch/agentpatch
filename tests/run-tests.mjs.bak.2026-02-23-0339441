@@ -768,8 +768,6 @@ const tests = [
   testDryRunDeleteNoWrite,
   testDryRunRenameNoWrite,
   testBackupCreated,
-  testMaxBackupsPruning,
-  testMaxBackupsZeroNoBackup,
   testFuzzyMatchTabs,
   testMultiLineReplace,
   testPureInsertionFallback,

@@ -27,46 +27,6 @@ function testAnchorTopSkipsBlockComment() {
   assert(insertIdx > commentEndIdx, `inserted after block comment (insert=${insertIdx}, commentEnd=${commentEndIdx})`);
 }
 
-function testMaxBackupsPruning() {
-  const cwd = mkTmp();
-  write(path.join(cwd, 'a.txt'), 'v1\n');
-  const mkPatch = (from, to) => [
-    '*** Begin Patch',
-    '*** Update File: a.txt',
-    '@@ @@',
-    `-${from}`,
-    `+${to}`,
-    '*** End Patch',
-    ''
-  ].join('\n');
-  // Apply 3 patches with --max-backups=2; only 2 backups should survive
-  apply(mkPatch('v1', 'v2'), cwd, ['--max-backups=2']);
-  apply(mkPatch('v2', 'v3'), cwd, ['--max-backups=2']);
-  apply(mkPatch('v3', 'v4'), cwd, ['--max-backups=2']);
-  const files = fs.readdirSync(cwd);
-  const bakFiles = files.filter((f) => f.startsWith('a.txt.bak.'));
-  assert(bakFiles.length <= 2, `expected ≤2 backups after pruning, got ${bakFiles.length}: ${bakFiles}`);
-  assert(read(path.join(cwd, 'a.txt')) === 'v4\n', 'final content is v4');
-}
-
-function testMaxBackupsZeroNoBackup() {
-  const cwd = mkTmp();
-  write(path.join(cwd, 'a.txt'), 'original\n');
-  const patch = [
-    '*** Begin Patch',
-    '*** Update File: a.txt',
-    '@@ @@',
-    '-original',
-    '+modified',
-    '*** End Patch',
-    ''
-  ].join('\n');
-  apply(patch, cwd, ['--max-backups=0']);
-  const files = fs.readdirSync(cwd);
-  const bakFiles = files.filter((f) => f.startsWith('a.txt.bak.'));
-  assert(bakFiles.length === 0, `expected 0 backups with --max-backups=0, got ${bakFiles.length}`);
-}
-
 const APPLY = process.env.APPLY_PATCH || path.resolve('bin/apply_patch');
 
 function die(msg) {
@@ -490,35 +450,6 @@ function testDryRunUpdateNoWrite() {
   assert(read(path.join(cwd, 'a.txt')) === 'old\n', 'dry run should not modify file');
 }
 
-function testDryRunDeleteNoWrite() {
-  const cwd = mkTmp();
-  write(path.join(cwd, 'victim.txt'), 'delete me\n');
-  const patch = [
-    '*** Begin Patch',
-    '*** Delete File: victim.txt',
-    '*** End Patch',
-    ''
-  ].join('\n');
-  const r = apply(patch, cwd, ['--dry-run', '--allow-delete']);
-  assert(r.code === 0, `dry run delete exit (stderr=${JSON.stringify(r.err)})`);
-  assert(fs.existsSync(path.join(cwd, 'victim.txt')), 'dry run should not delete file');
-}
-
-function testDryRunRenameNoWrite() {
-  const cwd = mkTmp();
-  write(path.join(cwd, 'original.txt'), 'content\n');
-  const patch = [
-    '*** Begin Patch',
-    '*** Rename File: original.txt -> renamed.txt',
-    '*** End Patch',
-    ''
-  ].join('\n');
-  const r = apply(patch, cwd, ['--dry-run', '--allow-rename']);
-  assert(r.code === 0, `dry run rename exit (stderr=${JSON.stringify(r.err)})`);
-  assert(fs.existsSync(path.join(cwd, 'original.txt')), 'dry run should not remove original');
-  assert(!fs.existsSync(path.join(cwd, 'renamed.txt')), 'dry run should not create renamed file');
-}
-
 // ── Backup creation ─────────────────────────────────────────────────────
 
 function testBackupCreated() {
@@ -765,11 +696,7 @@ const tests = [
   testDeleteNonExistentSucceeds,
   testDryRunNoWrite,
   testDryRunUpdateNoWrite,
-  testDryRunDeleteNoWrite,
-  testDryRunRenameNoWrite,
   testBackupCreated,
-  testMaxBackupsPruning,
-  testMaxBackupsZeroNoBackup,
   testFuzzyMatchTabs,
   testMultiLineReplace,
   testPureInsertionFallback,
