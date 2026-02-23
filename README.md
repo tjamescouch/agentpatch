@@ -52,6 +52,7 @@ PATCH
 - `--allow-delete` — Allow `*** Delete File` operations
 - `--allow-rename` — Allow `*** Rename File` operations
 - `--max-backups=N` — Keep at most N timestamped backups per file (default: unlimited)
+- `--json` — Output a JSON result object to stdout: `{ success, applied[], failed[], errors{} }`
 
 Backups are created as `<file>.bak.<timestamp>` before any modification. With `--max-backups`, old backups are pruned after each operation to maintain the limit.
 ## License
