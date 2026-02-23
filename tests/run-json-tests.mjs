@@ -219,8 +219,31 @@ function testJsonDryRun() {
 
 // ---- Run ----
 
+function testJsonAtomicHunkFailure() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'real.txt'), 'hello\n');
+  // real.txt exists but hunk won't match; good.txt would succeed — patch must be fully rejected
+  const patch = [
+    '*** Begin Patch',
+    '*** Add File: good.txt',
+    '+good',
+    '*** Update File: real.txt',
+    '@@ @@',
+    '-this line does not exist',
+    '+replaced',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 1, `exit code should be 1, got ${r.code}`);
+  const j = parseJson(r.out);
+  assert(j.success === false, 'success should be false');
+  assert(!j.applied.includes('good.txt'), 'atomic: good.txt must NOT be written when another op fails');
+  assert(j.failed.includes('real.txt'), 'real.txt should be in failed');
+}
 const tests = [
   testJsonAddFileSuccess,
+  testJsonAtomicHunkFailure,
   testJsonUpdateSuccess,
   testJsonUpdateFailure,
   testJsonMultipleOps,

@@ -16,6 +16,10 @@ function validateOps(
     if (op.op === 'update') {
       if (!fs.existsSync(op.filePath)) {
         errors[op.filePath] = `apply_patch: update failed, file not found: ${op.filePath}`;
+      } else {
+        // Dry-run the hunks to catch hunk-not-found before any writes.
+        const r = applyUpdate(op.filePath, op.hunks, /*dryRun=*/true, /*verbose=*/false, /*maxBackups=*/0);
+        if (!r.ok) errors[op.filePath] = r.error!;
       }
     } else if (op.op === 'delete') {
       if (!allowDelete) {
