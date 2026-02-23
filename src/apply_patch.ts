@@ -467,15 +467,17 @@ async function main() {
   // Runs unconditionally (including dry-run) so flag violations are caught early.
   const preErrors = validateOps(ops, allowDelete, allowRename);
   if (Object.keys(preErrors).length > 0) {
-    const result: ApplyResult = { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
+    const preResult: ApplyResult = { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
     if (jsonOutput) {
-      process.stdout.write(JSON.stringify(result) + '\n');
+      process.stdout.write(JSON.stringify(preResult) + '\n');
     } else {
       for (const msg of Object.values(preErrors)) {
         process.stderr.write(msg + '\n');
       }
     }
-    process.exit(1);
+    // In dry-run, report errors but don't hard-exit — preserve non-destructive semantics.
+    if (!dryRun) process.exit(1);
+    return;
   }
 
   const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
