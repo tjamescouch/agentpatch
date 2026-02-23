@@ -29,6 +29,10 @@ If a `-` block can’t be found, anchors provide a deterministic insertion locat
 
 ### Idempotence
 
+### Atomicity
+
+A patch with multiple ops is applied atomically — all ops are validated before any file is written. If any op would fail (missing file, missing flag, etc.), the entire patch is rejected with no filesystem changes.
+
 If the `+` block already exists (exact or whitespace-insensitive match), the hunk is treated as already applied.
 
 ### Usage
