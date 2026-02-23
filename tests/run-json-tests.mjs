@@ -219,6 +219,34 @@ function testJsonDryRun() {
 
 // ---- Run ----
 
+function testJsonErrorContainsFilePath() {
+  const cwd = mkTmp();
+  const fpath = path.join(cwd, 'f.txt');
+  write(fpath, 'aaa\nbbb\nccc\n');
+  const patchStr = '*** Begin Patch\n*** Update File: f.txt\n@@ @@\n-NOTHERE\n+replaced\n*** End Patch\n';
+  const r = apply(patchStr, cwd);
+  assert(r.code !== 0, 'should fail with nonzero exit');
+  const j = parseJson(r.out);
+  assert(j.success === false, 'success should be false');
+  assert('f.txt' in j.errors, 'errors object should have f.txt key');
+  assert(j.failed.includes('f.txt'), 'failed array should include f.txt');
+}
+
+function testJsonDryRunUpdateNoWrite() {
+  const cwd = mkTmp();
+  const fpath = path.join(cwd, 'g.txt');
+  write(fpath, 'hello\nworld\n');
+  const patchStr = '*** Begin Patch\n*** Update File: g.txt\n@@ @@\n-hello\n+goodbye\n*** End Patch\n';
+  const r = apply(patchStr, cwd, ['--dry-run']);
+  assert(r.code === 0, 'exit 0 in dry-run');
+  const j = parseJson(r.out);
+  assert(j.success === true, 'success should be true in dry-run');
+  assert(j.applied.includes('g.txt'), 'applied should include g.txt');
+  const actual = read(fpath);
+  assert(actual === 'hello\nworld\n', 'file must not be modified in dry-run');
+}
+
+
 const tests = [
   testJsonAddFileSuccess,
   testJsonUpdateSuccess,
@@ -232,6 +260,8 @@ const tests = [
   testJsonSchemaShape,
   testJsonNoOps,
   testJsonDryRun,
+  testJsonErrorContainsFilePath,
+  testJsonDryRunUpdateNoWrite,
 ];
 
 let passed = 0;
