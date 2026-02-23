@@ -512,7 +512,6 @@ async function main() {
         result.success = false;
       }
     } else if (op.op === 'delete') {
-    } else if (op.op === 'delete') {
       if (fs.existsSync(op.filePath)) {
         if (!dryRun) {
           backup(op.filePath, verbose, maxBackups);
@@ -529,7 +528,6 @@ async function main() {
         }
       }
       result.applied.push(op.filePath);
-    } else if (op.op === 'rename') {
     } else if (op.op === 'rename') {
       if (!fs.existsSync(op.from)) {
         const msg = `apply_patch: rename failed: ${op.from} not found`;

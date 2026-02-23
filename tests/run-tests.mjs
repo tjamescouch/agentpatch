@@ -519,6 +519,42 @@ function testDryRunRenameNoWrite() {
   assert(!fs.existsSync(path.join(cwd, 'renamed.txt')), 'dry run should not create renamed file');
 }
 
+
+// ── Dry-run flag violation tests ────────────────────────────────────────────
+
+function testDryRunDeleteFlagViolationNoExit() {
+  // --dry-run without --allow-delete: should report the error but exit 0 (non-destructive)
+  const cwd = mkTmp();
+  write(path.join(cwd, 'victim.txt'), 'content\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Delete File: victim.txt',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--dry-run']);
+  assert(r.code === 0, `dry-run delete flag violation should not exit(1), got ${r.code}`);
+  assert(fs.existsSync(path.join(cwd, 'victim.txt')), 'dry-run should not delete file');
+  assert(r.err.includes('allow-delete'), `stderr should mention allow-delete, got: ${r.err}`);
+}
+
+function testDryRunRenameFlagViolationNoExit() {
+  // --dry-run without --allow-rename: should report the error but exit 0 (non-destructive)
+  const cwd = mkTmp();
+  write(path.join(cwd, 'original.txt'), 'content\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Rename File: original.txt -> renamed.txt',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--dry-run']);
+  assert(r.code === 0, `dry-run rename flag violation should not exit(1), got ${r.code}`);
+  assert(fs.existsSync(path.join(cwd, 'original.txt')), 'dry-run should not move original');
+  assert(!fs.existsSync(path.join(cwd, 'renamed.txt')), 'dry-run should not create renamed file');
+  assert(r.err.includes('allow-rename'), `stderr should mention allow-rename, got: ${r.err}`);
+}
+
 // ── Backup creation ─────────────────────────────────────────────────────
 
 function testBackupCreated() {
@@ -767,6 +803,8 @@ const tests = [
   testDryRunUpdateNoWrite,
   testDryRunDeleteNoWrite,
   testDryRunRenameNoWrite,
+  testDryRunDeleteFlagViolationNoExit,
+  testDryRunRenameFlagViolationNoExit,
   testBackupCreated,
   testMaxBackupsPruning,
   testMaxBackupsZeroNoBackup,
