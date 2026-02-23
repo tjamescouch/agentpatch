@@ -3,6 +3,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Pre-flight validation: check all ops can succeed before writing anything.
+// Returns a map of filePath -> error string for any op that would fail.
+function validateOps(
+  ops: Op[],
+  allowDelete: boolean,
+  allowRename: boolean,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  for (const op of ops) {
+    if (op.op === 'update') {
+      if (!fs.existsSync(op.filePath)) {
+        errors[op.filePath] = `apply_patch: update failed, file not found: ${op.filePath}`;
+      }
+    } else if (op.op === 'delete') {
+      if (!allowDelete) {
+        errors[op.filePath] = 'apply_patch: Delete File requires --allow-delete';
+      }
+    } else if (op.op === 'rename') {
+      if (!allowRename) {
+        errors[op.from] = 'apply_patch: Rename File requires --allow-rename';
+      } else if (!fs.existsSync(op.from)) {
+        errors[op.from] = `apply_patch: rename failed: ${op.from} not found`;
+      }
+    }
+  }
+
+  return errors;
+}
+
 type Anchor =
   | { type: 'top' | 'bottom' }
   | { type: 'before' | 'after'; pattern: string }
@@ -430,6 +460,22 @@ async function main() {
   const patchText = await readStdin();
   const ops = parseOps(patchText);
   if (!ops.length) die('apply_patch: no operations recognized');
+
+  // Pre-flight: validate all ops before touching any file (atomicity guarantee).
+  if (!dryRun) {
+    const preErrors = validateOps(ops, allowDelete, allowRename);
+    if (Object.keys(preErrors).length > 0) {
+      const result: ApplyResult = { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
+      if (jsonOutput) {
+        process.stdout.write(JSON.stringify(result) + '\n');
+      } else {
+        for (const msg of Object.values(preErrors)) {
+          process.stderr.write(msg + '\n');
+        }
+      }
+      process.exit(1);
+    }
+  }
 
   const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
 
