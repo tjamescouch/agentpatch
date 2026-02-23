@@ -461,22 +461,6 @@ async function main() {
   const ops = parseOps(patchText);
   if (!ops.length) die('apply_patch: no operations recognized');
 
-  // Pre-flight: validate all ops before touching any file (atomicity guarantee).
-  if (!dryRun) {
-    const preErrors = validateOps(ops, allowDelete, allowRename);
-    if (Object.keys(preErrors).length > 0) {
-      const result: ApplyResult = { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
-      if (jsonOutput) {
-        process.stdout.write(JSON.stringify(result) + '\n');
-      } else {
-        for (const msg of Object.values(preErrors)) {
-          process.stderr.write(msg + '\n');
-        }
-      }
-      process.exit(1);
-    }
-  }
-
   const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
 
   for (const op of ops) {

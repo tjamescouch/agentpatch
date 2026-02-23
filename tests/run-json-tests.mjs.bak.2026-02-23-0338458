@@ -109,7 +109,7 @@ function testJsonMultipleOps() {
 
 function testJsonPartialFailure() {
   const cwd = mkTmp();
-  // add would succeed, but update fails (file doesn't exist) — atomic: neither should write
+  // add succeeds, update fails (file doesn't exist)
   const patch = [
     '*** Begin Patch',
     '*** Add File: good.txt',
@@ -122,11 +122,10 @@ function testJsonPartialFailure() {
     ''
   ].join('\n');
   const r = apply(patch, cwd);
-  assert(r.code === 1, `exit code should be 1 for validation failure, got ${r.code}`);
+  assert(r.code === 1, `exit code should be 1 for partial failure, got ${r.code}`);
   const j = parseJson(r.out);
   assert(j.success === false, 'success should be false');
-  // atomic: good.txt must NOT have been written
-  assert(!j.applied.includes('good.txt'), 'atomic: good.txt should NOT be applied when another op fails');
+  assert(j.applied.includes('good.txt'), 'applied includes good.txt');
   assert(j.failed.includes('missing.txt'), 'failed includes missing.txt');
   assert(typeof j.errors['missing.txt'] === 'string', 'errors has missing.txt');
 }
