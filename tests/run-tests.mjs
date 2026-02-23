@@ -27,6 +27,46 @@ function testAnchorTopSkipsBlockComment() {
   assert(insertIdx > commentEndIdx, `inserted after block comment (insert=${insertIdx}, commentEnd=${commentEndIdx})`);
 }
 
+function testMaxBackupsPruning() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'v1\n');
+  const mkPatch = (from, to) => [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    `-${from}`,
+    `+${to}`,
+    '*** End Patch',
+    ''
+  ].join('\n');
+  // Apply 3 patches with --max-backups=2; only 2 backups should survive
+  apply(mkPatch('v1', 'v2'), cwd, ['--max-backups=2']);
+  apply(mkPatch('v2', 'v3'), cwd, ['--max-backups=2']);
+  apply(mkPatch('v3', 'v4'), cwd, ['--max-backups=2']);
+  const files = fs.readdirSync(cwd);
+  const bakFiles = files.filter((f) => f.startsWith('a.txt.bak.'));
+  assert(bakFiles.length <= 2, `expected ≤2 backups after pruning, got ${bakFiles.length}: ${bakFiles}`);
+  assert(read(path.join(cwd, 'a.txt')) === 'v4\n', 'final content is v4');
+}
+
+function testMaxBackupsZeroNoBackup() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'original\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    '-original',
+    '+modified',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  apply(patch, cwd, ['--max-backups=0']);
+  const files = fs.readdirSync(cwd);
+  const bakFiles = files.filter((f) => f.startsWith('a.txt.bak.'));
+  assert(bakFiles.length === 0, `expected 0 backups with --max-backups=0, got ${bakFiles.length}`);
+}
+
 const APPLY = process.env.APPLY_PATCH || path.resolve('bin/apply_patch');
 
 function die(msg) {
@@ -728,6 +768,8 @@ const tests = [
   testDryRunDeleteNoWrite,
   testDryRunRenameNoWrite,
   testBackupCreated,
+  testMaxBackupsPruning,
+  testMaxBackupsZeroNoBackup,
   testFuzzyMatchTabs,
   testMultiLineReplace,
   testPureInsertionFallback,

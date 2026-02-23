@@ -223,8 +223,9 @@ function pruneOldBackups(filePath: string, maxBackups: number, verbose: boolean)
     dbg(verbose, `failed to prune backups for ${filePath}: ${err.message}`);
   }
 }
-function backup(filePath: string, verbose: boolean, maxBackups = 0) {
+function backup(filePath: string, verbose: boolean, maxBackups = -1) {
   if (!fs.existsSync(filePath)) return;
+  if (maxBackups === 0) return; // 0 = no backups
   const ts = new Date().toISOString().replace(/[:.]/g, '').replace('T', '-').slice(0, 18);
   const bak = `${filePath}.bak.${ts}`;
   ensureDir(bak);
@@ -237,7 +238,7 @@ function backup(filePath: string, verbose: boolean, maxBackups = 0) {
   dbg(verbose, 'backup', bak);
   if (maxBackups > 0) {
     pruneOldBackups(filePath, maxBackups, verbose);
-  }
+  } // maxBackups -1 = unlimited, 0 = no backup (handled above)
 }
 
 function parseAnchor(header: string): Anchor {
@@ -438,7 +439,7 @@ async function main() {
   let verbose = false;
   let allowDelete = false;
   let allowRename = false;
-  let maxBackups = 0;
+  let maxBackups = -1; // -1 = unlimited (default when --max-backups not specified)
   let jsonOutput = false;
 
   for (const a of args) {
