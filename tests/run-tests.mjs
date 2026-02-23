@@ -450,6 +450,35 @@ function testDryRunUpdateNoWrite() {
   assert(read(path.join(cwd, 'a.txt')) === 'old\n', 'dry run should not modify file');
 }
 
+function testDryRunDeleteNoWrite() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'victim.txt'), 'delete me\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Delete File: victim.txt',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--dry-run', '--allow-delete']);
+  assert(r.code === 0, `dry run delete exit (stderr=${JSON.stringify(r.err)})`);
+  assert(fs.existsSync(path.join(cwd, 'victim.txt')), 'dry run should not delete file');
+}
+
+function testDryRunRenameNoWrite() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'original.txt'), 'content\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Rename File: original.txt -> renamed.txt',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd, ['--dry-run', '--allow-rename']);
+  assert(r.code === 0, `dry run rename exit (stderr=${JSON.stringify(r.err)})`);
+  assert(fs.existsSync(path.join(cwd, 'original.txt')), 'dry run should not remove original');
+  assert(!fs.existsSync(path.join(cwd, 'renamed.txt')), 'dry run should not create renamed file');
+}
+
 // ── Backup creation ─────────────────────────────────────────────────────
 
 function testBackupCreated() {
@@ -696,6 +725,8 @@ const tests = [
   testDeleteNonExistentSucceeds,
   testDryRunNoWrite,
   testDryRunUpdateNoWrite,
+  testDryRunDeleteNoWrite,
+  testDryRunRenameNoWrite,
   testBackupCreated,
   testFuzzyMatchTabs,
   testMultiLineReplace,
