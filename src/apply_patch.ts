@@ -463,19 +463,19 @@ async function main() {
   if (!ops.length) die('apply_patch: no operations recognized');
 
   // Pre-flight: validate all ops before touching any file (atomicity guarantee).
-  if (!dryRun) {
-    const preErrors = validateOps(ops, allowDelete, allowRename);
-    if (Object.keys(preErrors).length > 0) {
-      const result: ApplyResult = { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
-      if (jsonOutput) {
-        process.stdout.write(JSON.stringify(result) + '\n');
-      } else {
-        for (const msg of Object.values(preErrors)) {
-          process.stderr.write(msg + '\n');
-        }
+  // Pre-flight: validate all ops before touching any file (atomicity guarantee).
+  // Runs unconditionally (including dry-run) so flag violations are caught early.
+  const preErrors = validateOps(ops, allowDelete, allowRename);
+  if (Object.keys(preErrors).length > 0) {
+    const result: ApplyResult = { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
+    if (jsonOutput) {
+      process.stdout.write(JSON.stringify(result) + '\n');
+    } else {
+      for (const msg of Object.values(preErrors)) {
+        process.stderr.write(msg + '\n');
       }
-      process.exit(1);
     }
+    process.exit(1);
   }
 
   const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
@@ -510,14 +510,7 @@ async function main() {
         result.success = false;
       }
     } else if (op.op === 'delete') {
-      if (!allowDelete) {
-        const msg = 'apply_patch: Delete File requires --allow-delete';
-        process.stderr.write(msg + '\n');
-        result.failed.push(op.filePath);
-        result.errors[op.filePath] = msg;
-        result.success = false;
-        continue;
-      }
+    } else if (op.op === 'delete') {
       if (fs.existsSync(op.filePath)) {
         if (!dryRun) {
           backup(op.filePath, verbose, maxBackups);
@@ -535,14 +528,7 @@ async function main() {
       }
       result.applied.push(op.filePath);
     } else if (op.op === 'rename') {
-      if (!allowRename) {
-        const msg = 'apply_patch: Rename File requires --allow-rename';
-        process.stderr.write(msg + '\n');
-        result.failed.push(filePath);
-        result.errors[filePath] = msg;
-        result.success = false;
-        continue;
-      }
+    } else if (op.op === 'rename') {
       if (!fs.existsSync(op.from)) {
         const msg = `apply_patch: rename failed: ${op.from} not found`;
         process.stderr.write(msg + '\n');
