@@ -436,6 +436,106 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
   return { ok: true };
 }
 
+// ── Public API (for use as an imported module) ───────────────────────────────
+
+export interface ApplyPatchOptions {
+  dryRun?: boolean;
+  verbose?: boolean;
+  allowDelete?: boolean;
+  allowRename?: boolean;
+  maxBackups?: number;
+}
+
+/**
+ * Apply a patch string programmatically.
+ * Returns an ApplyResult describing what succeeded or failed.
+ * Throws only on unrecoverable internal errors.
+ */
+export function applyPatch(patchText: string, options: ApplyPatchOptions = {}): ApplyResult {
+  const {
+    dryRun = false,
+    verbose = false,
+    allowDelete = false,
+    allowRename = false,
+    maxBackups = 0,
+  } = options;
+
+  const ops = parseOps(patchText);
+  if (!ops.length) {
+    return { success: false, applied: [], failed: [], errors: { _global: 'apply_patch: no operations recognized' } };
+  }
+
+  if (!dryRun) {
+    const preErrors = validateOps(ops, allowDelete, allowRename);
+    if (Object.keys(preErrors).length > 0) {
+      return { success: false, applied: [], failed: Object.keys(preErrors), errors: preErrors };
+    }
+  }
+
+  const result: ApplyResult = { success: true, applied: [], failed: [], errors: {} };
+
+  for (const op of ops) {
+    const filePath = op.op === 'rename' ? op.from : op.filePath;
+    if (op.op === 'add') {
+      if (!dryRun) {
+        ensureDir(op.filePath);
+        backup(op.filePath, verbose, maxBackups);
+        const c = op.content.endsWith('\n') ? op.content : op.content + '\n';
+        try {
+          fs.writeFileSync(op.filePath, c, 'utf8');
+        } catch (err: any) {
+          const msg = `apply_patch: failed to write ${op.filePath}: ${err.message}`;
+          result.failed.push(op.filePath); result.errors[op.filePath] = msg; result.success = false; continue;
+        }
+      }
+      result.applied.push(op.filePath);
+    } else if (op.op === 'update') {
+      const r = applyUpdate(op.filePath, op.hunks, dryRun, verbose, maxBackups);
+      if (r.ok) { result.applied.push(op.filePath); }
+      else { result.failed.push(op.filePath); result.errors[op.filePath] = r.error!; result.success = false; }
+    } else if (op.op === 'delete') {
+      if (!allowDelete) {
+        const msg = 'apply_patch: Delete File requires --allow-delete';
+        result.failed.push(op.filePath); result.errors[op.filePath] = msg; result.success = false; continue;
+      }
+      if (fs.existsSync(op.filePath) && !dryRun) {
+        backup(op.filePath, verbose, maxBackups);
+        try { fs.rmSync(op.filePath); } catch (err: any) {
+          const msg = `apply_patch: failed to delete ${op.filePath}: ${err.message}`;
+          result.failed.push(op.filePath); result.errors[op.filePath] = msg; result.success = false; continue;
+        }
+      }
+      result.applied.push(op.filePath);
+    } else if (op.op === 'rename') {
+      if (!allowRename) {
+        const msg = 'apply_patch: Rename File requires --allow-rename';
+        result.failed.push(filePath); result.errors[filePath] = msg; result.success = false; continue;
+      }
+      if (!fs.existsSync(op.from)) {
+        const msg = `apply_patch: rename failed: ${op.from} not found`;
+        result.failed.push(filePath); result.errors[filePath] = msg; result.success = false;
+      } else if (!dryRun) {
+        ensureDir(op.to);
+        if (fs.existsSync(op.to)) backup(op.to, verbose, maxBackups);
+        try { fs.renameSync(op.from, op.to); } catch (err: any) {
+          const msg = `apply_patch: failed to rename ${op.from} -> ${op.to}: ${err.message}`;
+          result.failed.push(filePath); result.errors[filePath] = msg; result.success = false; continue;
+        }
+        result.applied.push(filePath);
+      } else {
+        result.applied.push(filePath);
+      }
+    }
+  }
+
+  return result;
+}
+
+/** Parse a patch string into ops without applying them. */
+export { parseOps };
+
+/** Types */
+export type { Op, Hunk, Anchor, ApplyResult };
 async function main() {
   const args = process.argv.slice(2);
   let dryRun = false;
