@@ -6,6 +6,14 @@
   "bin": {
     "apply_patch": "dist/apply_patch.js"
   },
+  "main": "dist/apply_patch.js",
+  "exports": {
+    ".": {
+      "import": "./dist/apply_patch.js",
+      "types": "./dist/apply_patch.d.ts"
+    }
+  },
+  "types": "dist/apply_patch.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node tests/run-tests.mjs && node tests/run-json-tests.mjs"
