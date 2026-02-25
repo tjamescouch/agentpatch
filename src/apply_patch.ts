@@ -453,6 +453,10 @@ async function main() {
       maxBackups = val;
     }
     else if (a === '--json') jsonOutput = true;
+    else if (a === '--version' || a === '-V') {
+      process.stdout.write('apply_patch 0.1.0\n');
+      process.exit(0);
+    }
     else die(`apply_patch: unknown arg: ${a}`, 2);
   }
 
