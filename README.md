@@ -33,17 +33,18 @@ If the `+` block already exists (exact or whitespace-insensitive match), the hun
 
 ### Usage
 
-bin/apply_patch --verbose <<'PATCH'
-bin/apply_patch --verbose --max-backups=5 <<'PATCH'
+bin/apply_patch <patchfile>
+
+bin/apply_patch -  # read patch from stdin
 
 ```bash
-bin/apply_patch --verbose <<'PATCH'
+bin/apply_patch --verbose --max-backups=5 <<'PATCH'
 *** Begin Patch
 *** Add File: hello.txt
 +hello\n
 *** End Patch
 PATCH
-```
+``` 
 
 ### Options
 
