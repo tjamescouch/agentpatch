@@ -4,6 +4,46 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+// ── Delete with flag actually removes file ──────────────────────────────
+
+function testDeleteWithFlagRemovesFile() {
+  const cwd = mkTmp()
+  write(path.join(cwd, 'a.txt'), 'delete me\n')
+  const patch = [
+    '*** Begin Patch',
+    '*** Delete File: a.txt',
+    '*** End Patch',
+    ''
+  ].join('\n')
+  const r = apply(patch, cwd, ['--allow-delete'])
+  assert(r.code === 0, `delete with flag exit (stderr=${JSON.stringify(r.err)})`)
+  assert(!fs.existsSync(path.join(cwd, 'a.txt')), 'file should be deleted')
+}
+
+// ── Atomic rollback: second op fails, first file unchanged ───────────────
+
+function testAtomicRollbackOnFailure() {
+  const cwd = mkTmp()
+  write(path.join(cwd, 'a.txt'), 'original\n')
+  // Patch: first op valid update, second op targets nonexistent file → should fail atomically
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ @@',
+    '-original',
+    '+modified',
+    '*** Update File: does_not_exist.txt',
+    '@@ @@',
+    '-ghost',
+    '+x',
+    '*** End Patch',
+    ''
+  ].join('\n')
+  const r = apply(patch, cwd)
+  assert(r.code !== 0, 'multi-op patch with bad op should fail')
+  // atomic: first file must be unchanged
+  assert(read(path.join(cwd, 'a.txt')) === 'original\n', 'first file rolled back on failure')
+}
 // ── Block comment skipping in at:top ───────────────────────────────────
 
 function testAnchorTopSkipsBlockComment() {
@@ -780,6 +820,8 @@ const tests = [
   testEmptyPatchFails,
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
+  testDeleteWithFlagRemovesFile,
+  testAtomicRollbackOnFailure,
   testWindowsLineEndings,
 ];
 
