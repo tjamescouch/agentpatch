@@ -671,6 +671,23 @@ function testEmptyPatchFails() {
   assert(r.code !== 0, 'empty patch should fail');
 }
 
+// ── Help flag exits 0 and prints usage ──────────────────────────────────
+
+function testHelpFlag() {
+  const cwd = mkTmp();
+  const r = apply('', cwd, ['--help']);
+  assert(r.code === 0, `--help should exit 0, got ${r.code}`);
+  assert(r.out.includes('Usage:'), `--help output should include 'Usage:'`);
+  assert(r.out.includes('--dry-run'), `--help output should mention --dry-run`);
+}
+
+function testHelpShortFlag() {
+  const cwd = mkTmp();
+  const r = apply('', cwd, ['-h']);
+  assert(r.code === 0, `-h should exit 0, got ${r.code}`);
+  assert(r.out.includes('Usage:'), `-h output should include 'Usage:'`);
+}
+
 // ── Idempotent update (exact match) ─────────────────────────────────────
 
 function testIdempotentExactUpdate() {
@@ -778,6 +795,8 @@ const tests = [
   testAddFileMultiLine,
   testUnknownArgFails,
   testEmptyPatchFails,
+  testHelpFlag,
+  testHelpShortFlag,
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
