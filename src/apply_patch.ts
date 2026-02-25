@@ -447,6 +447,35 @@ async function main() {
     else if (a === '--verbose' || a === '-v') verbose = true;
     else if (a === '--allow-delete') allowDelete = true;
     else if (a === '--allow-rename') allowRename = true;
+    else if (a === '--help' || a === '-h') {
+      process.stdout.write(`Usage: apply_patch [options] < patch.txt
+
+Options:
+  --verbose, -v        Enable debug output to stderr
+  --dry-run            Preview changes without writing files
+  --allow-delete       Allow *** Delete File operations
+  --allow-rename       Allow *** Rename File operations
+  --max-backups=N      Keep at most N timestamped backups per file (0 = none, default: unlimited)
+  --json               Output results as JSON on stdout
+  --help, -h           Show this help message
+
+Patch grammar:
+  *** Begin Patch
+  *** Update File: path
+  @@ [anchor] @@
+  -old line
+  +new line
+   context line
+  *** Add File: path
+  +file content
+  *** Delete File: path       (requires --allow-delete)
+  *** Rename File: old -> new (requires --allow-rename)
+  *** End Patch
+
+Anchors: at:top, at:bottom, before:/regex/, after:/regex/
+`);
+      process.exit(0);
+    }
     else if (a.startsWith('--max-backups=')) {
       const val = parseInt(a.slice('--max-backups='.length), 10);
       if (isNaN(val) || val < 0) die('apply_patch: --max-backups requires non-negative integer', 2);
