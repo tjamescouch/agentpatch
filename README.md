@@ -25,7 +25,7 @@ Inside the `@@ ... @@` header you can include anchor directives:
 - `@@ before:/regex/ @@`
 - `@@ after:/regex/ @@`
 
-If a `-` block can’t be found, anchors provide a deterministic insertion location.
+If a `-` block can't be found, anchors provide a deterministic insertion location.
 
 ### Idempotence
 
@@ -33,14 +33,22 @@ If the `+` block already exists (exact or whitespace-insensitive match), the hun
 
 ### Usage
 
-bin/apply_patch --verbose <<'PATCH'
-bin/apply_patch --verbose --max-backups=5 <<'PATCH'
-
 ```bash
 bin/apply_patch --verbose <<'PATCH'
 *** Begin Patch
 *** Add File: hello.txt
-+hello\n
++hello
+*** End Patch
+PATCH
+```
+
+```bash
+bin/apply_patch --verbose --max-backups=5 <<'PATCH'
+*** Begin Patch
+*** Update File: src/main.ts
+@@ -oldLine @@
+-oldLine
++newLine
 *** End Patch
 PATCH
 ```
@@ -52,8 +60,10 @@ PATCH
 - `--allow-delete` — Allow `*** Delete File` operations
 - `--allow-rename` — Allow `*** Rename File` operations
 - `--max-backups=N` — Keep at most N timestamped backups per file (default: unlimited)
+- `--json` — Output results as JSON
 
-Backups are created as `<file>.bak.<timestamp>` before any modification. With `--max-backups`, old backups are pruned after each operation to maintain the limit.
+Backups are created as `<file>.bak.<timestamp>` before any modification. With `--max-backups`, old backups are pruned after each operation to maintain the limit. Use `--max-backups=0` to disable backups entirely.
+
 ## License
 
 MIT
