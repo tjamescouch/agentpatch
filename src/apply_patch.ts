@@ -400,6 +400,15 @@ function applyUpdate(filePath: string, hunks: Hunk[], dryRun: boolean, verbose: 
       continue;
     }
 
+    // An explicit anchor (before:/re/, after:/re/, at:top, at:bottom) that
+    // returned -1 means the regex had no match — that is a hard failure.
+    // Only fall back to insertTopStrategy when NO anchor was specified at all.
+    if ('type' in h.anchor) {
+      const msg = `apply_patch: anchor '${JSON.stringify(h.anchor)}' did not match in ${filePath}; aborting`;
+      process.stderr.write(msg + '\n');
+      return { ok: false, error: msg };
+    }
+
     if (h.minus.length === 0 && h.plus.length) {
       const pos = insertTopStrategy(lines);
       lines.splice(pos, 0, ...h.plus);

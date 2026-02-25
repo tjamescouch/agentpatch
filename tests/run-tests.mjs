@@ -734,6 +734,106 @@ function testWindowsLineEndings() {
   assert(content.includes('TWO'), 'windows endings updated');
 }
 
+// ── Anchor failure / edge cases ─────────────────────────────────────────
+
+function testAnchorBeforeNoMatch() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'alpha\nbeta\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ before:/NOMATCH/ @@',
+    '+inserted',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code !== 0, `before-nomatch should fail (got code=${r.code})`);
+  assert(read(path.join(cwd, 'a.txt')) === 'alpha\nbeta\n', 'file must be unchanged on anchor miss');
+}
+
+function testAnchorAfterNoMatch() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'alpha\nbeta\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ after:/NOMATCH/ @@',
+    '+inserted',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code !== 0, `after-nomatch should fail (got code=${r.code})`);
+  assert(read(path.join(cwd, 'a.txt')) === 'alpha\nbeta\n', 'file must be unchanged on anchor miss');
+}
+
+function testAnchorBeforeMatchesCorrectLine() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'alpha\nbeta\ngamma\ndelta\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ before:/gamma/ @@',
+    '+inserted',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, 'before-match should succeed');
+  const content = read(path.join(cwd, 'a.txt'));
+  assert(content === 'alpha\nbeta\ninserted\ngamma\ndelta\n', `before inserts at correct position, got: ${JSON.stringify(content)}`);
+}
+
+function testAnchorAfterMatchesCorrectLine() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), 'alpha\nbeta\ngamma\ndelta\n');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ after:/beta/ @@',
+    '+inserted',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, 'after-match should succeed');
+  const content = read(path.join(cwd, 'a.txt'));
+  assert(content === 'alpha\nbeta\ninserted\ngamma\ndelta\n', `after inserts at correct position, got: ${JSON.stringify(content)}`);
+}
+
+function testAtTopEmptyFile() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), '');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ at:top @@',
+    '+first line',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, 'at:top empty file should succeed');
+  assert(read(path.join(cwd, 'a.txt')).includes('first line'), 'at:top inserts into empty file');
+}
+
+function testAtBottomEmptyFile() {
+  const cwd = mkTmp();
+  write(path.join(cwd, 'a.txt'), '');
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: a.txt',
+    '@@ at:bottom @@',
+    '+last line',
+    '*** End Patch',
+    ''
+  ].join('\n');
+  const r = apply(patch, cwd);
+  assert(r.code === 0, 'at:bottom empty file should succeed');
+  assert(read(path.join(cwd, 'a.txt')).includes('last line'), 'at:bottom inserts into empty file');
+}
+
 // ── All tests ───────────────────────────────────────────────────────────
 
 const tests = [
@@ -781,6 +881,12 @@ const tests = [
   testIdempotentExactUpdate,
   testAnchorRegexSpecialChars,
   testWindowsLineEndings,
+  testAnchorBeforeNoMatch,
+  testAnchorAfterNoMatch,
+  testAnchorBeforeMatchesCorrectLine,
+  testAnchorAfterMatchesCorrectLine,
+  testAtTopEmptyFile,
+  testAtBottomEmptyFile,
 ];
 
 let passed = 0;
